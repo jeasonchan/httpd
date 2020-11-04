@@ -40,16 +40,19 @@ using namespace std;
 #define HEADSIZE 1024
 #define BODYSIZE 1024
 
-//宏函数
+/**
+ * 宏函数
+ *
+ * 打印字自定义的关键字，并打印当前的错误码
+ *
+ * @param str 用户方便自己定位的关键字
+ */
 #define ERR_EXIT(str) do {\
-		cerr << str << " errno:" << errno << endl;\
-		exit(-1);\
+        cerr << str << " errno:" << errno << endl<<"err info:"<< strerror(errno) ;\
+        exit(-1);\
 } while (0)
 //重命名结构体
 typedef struct sockaddr SA;
-
-
-
 
 
 #endif //_COMMON_H_

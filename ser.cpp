@@ -284,7 +284,7 @@ void Ser::do_conf(const char* filename)
 	return;
 }
 
-void Ser::go()
+void Ser::start()
 {
 	do_conf("./.httpd.conf");//从配置文件加载配置项
 	//cout << "m_confpath:" << m_confpath << endl;

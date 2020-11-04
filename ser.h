@@ -13,7 +13,7 @@ class Ser {
 		Ser(const char* ip, unsigned int port);
 		~Ser() {}
 	public:
-		void go();
+		void start();
 		int wait_event();//监听一次所有套接口
 		void do_accept();//有新连接进入时调用
 		void do_in(int fd);//有可读事件发生时

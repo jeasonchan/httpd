@@ -3,8 +3,12 @@
 int main()
 {
 
+    //调用无参构造
 	Ser ser;
-	ser.go();
+
+	
+
+    ser.start();
 
 	return 0;
 }
