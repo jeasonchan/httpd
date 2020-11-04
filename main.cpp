@@ -1,14 +1,13 @@
 #include "ser.h"
 
-int main()
-{
+int main() {
 
     //调用无参构造
-	Ser ser;
+    Ser ser;
 
-	
+    std::cout << "line 9" << std::endl;
 
     ser.start();
 
-	return 0;
+    return 0;
 }
