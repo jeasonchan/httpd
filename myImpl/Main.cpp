@@ -12,18 +12,14 @@
 #include <cstring>
 #include <cerrno>
 #include <functional>
+#include "Util.hpp"
 
 namespace jeason {
     const int MAX_EVENTS = 500;
     const int MAX_CHAR_LENGTH = 10000;
 }
 
-inline void exit_with_flag_errInfo(std::string &&customFlag) {
-    std::cout << "customFlag:" << customFlag << std::endl
-              << "err no:" << errno << std::endl
-              << "error info:" << strerror(errno) << std::endl;
-    exit(errno);
-}
+using namespace jeason;
 
 int main() {
     //定义并全初始化为0，
@@ -44,13 +40,11 @@ int main() {
     //在协议层面，修改的socket的属性
     int bReuse = 1;
     if (-1 == setsockopt(serverSocketFD, SOL_SOCKET, SO_REUSEADDR, (char *) &bReuse, sizeof(bReuse))) {
-        std::cerr << "setSockOpt fail\n" << std::endl;
-        return -1;
+        Util::exit_with_flag_errInfo("setSockOpt fail");
     }
 
     //绑定监听的端口
     sockaddr_in serverAddress{AF_INET, htons(8888), {INADDR_ANY}};
-
 
     /*
     以下是C风格的结构体赋值方法，很显然，使用花括号初始化是直接初始化，省去了先初始化再赋值的开销
