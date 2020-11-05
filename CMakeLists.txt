@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(httpd)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 
 include_directories(.)
 
@@ -15,3 +15,7 @@ add_executable(httpd
         net.h
         ser.cpp
         ser.h)
+
+file(COPY .httpd.conf DESTINATION cmake-build-debug)
+
+add_executable(myServer myImpl/Main.cpp)
