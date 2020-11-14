@@ -1,14 +1,18 @@
 #include "ser.h"
 
+/**
+ * RAII 风格，完成
+ */
 Ser::Ser() {
     //INADDR_ANY 0.0.0.0
     //Ser("0.0.0.0", SER_PORT);
-    if ((m_listenfd = socket(PF_INET, SOCK_STREAM, 0)) < 0)
+    if ((serverFD = socket(PF_INET, SOCK_STREAM, 0)) < 0)
         ERR_EXIT("socket");
 
     int on = 1;
-    if (setsockopt(m_listenfd, SOL_SOCKET, SO_REUSEADDR, (const char *) &on, sizeof(on)) < 0)
+    if (setsockopt(serverFD, SOL_SOCKET, SO_REUSEADDR, (const char *) &on, sizeof(on)) < 0) {
         ERR_EXIT("setsockopt");
+    }
 
 
     m_addr_len = sizeof(m_local_addr);
@@ -18,24 +22,24 @@ Ser::Ser() {
     m_local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     m_local_addr.sin_port = htons(SER_PORT);
 
-    Bind(m_listenfd, &m_local_addr);
-    Listen(m_listenfd, LISTENQ);
+    Bind(serverFD, &m_local_addr);
+    Listen(serverFD, LISTENQ);
 
     if ((m_epoll_fd = epoll_create1(0)) < 0)
         ERR_EXIT("epoll_create1");
-    add_event(m_listenfd, EPOLLIN);
+    add_event(serverFD, EPOLLIN);
 
-    struct epoll_event one;
-    bzero(&one, sizeof(one));
-    m_epoll_event.push_back(one);
+    epoll_event one{};
+    //    bzero(&one, sizeof(one));  使用CPP风格的初始化，默认是零值初始化，不需要这一步
+    m_epoll_event.push_back(one); //为什么这时候要先取一个出来放进去？？？
 }
 
 Ser::Ser(const char *ip, unsigned int port) {
-    if ((m_listenfd = socket(PF_INET, SOCK_STREAM, 0)) < 0)
+    if ((serverFD = socket(PF_INET, SOCK_STREAM, 0)) < 0)
         ERR_EXIT("socket");
 
     int on = 1;
-    if (setsockopt(m_listenfd, SOL_SOCKET, SO_REUSEADDR, (const char *) &on, sizeof(on)) < 0)
+    if (setsockopt(serverFD, SOL_SOCKET, SO_REUSEADDR, (const char *) &on, sizeof(on)) < 0)
         ERR_EXIT("setsockopt");
 
 
@@ -47,16 +51,16 @@ Ser::Ser(const char *ip, unsigned int port) {
     if (inet_pton(AF_INET, ip, &m_local_addr.sin_addr) < 0)
         ERR_EXIT("inet_pton");
 
-    Bind(m_listenfd, &m_local_addr);
-    Listen(m_listenfd, LISTENQ);
+    Bind(serverFD, &m_local_addr);
+    Listen(serverFD, LISTENQ);
 
     if ((m_epoll_fd = epoll_create1(0)) < 0)
         ERR_EXIT("epoll_create1");
-    add_event(m_listenfd, EPOLLIN);
+    add_event(serverFD, EPOLLIN);
 
-    struct epoll_event one;
-    bzero(&one, sizeof(one));
-    m_epoll_event.push_back(one);
+    epoll_event one{};
+//    bzero(&one, sizeof(one));  使用CPP风格的初始化，默认是零值初始化，不需要这一步
+    m_epoll_event.push_back(one); //为什么这时候要先取一个出来放进去？？？
 }
 
 void Ser::Bind(int sockfd, struct sockaddr_in *addr) {
@@ -70,15 +74,20 @@ void Ser::Listen(int sockfd, unsigned int num) {
 }
 
 int Ser::wait_event() {
-    int ret = epoll_wait(m_epoll_fd, &m_epoll_event[0], m_epoll_event.size(), -1);
+    int ret = epoll_wait(this->m_epoll_fd, &m_epoll_event[0], m_epoll_event.size(), -1);
     if (ret < 0) {
         ERR_EXIT("epoll_wait");;
     }
     return ret;
 }
 
+/**
+ *
+ * @param fd socket文件描述符
+ * @param state 关心的事件类型
+ */
 void Ser::add_event(int fd, int state) {
-    struct epoll_event ev;
+    epoll_event ev{};
     ev.events = state;
     ev.data.fd = fd;
     epoll_ctl(m_epoll_fd, EPOLL_CTL_ADD, fd, &ev);
@@ -99,12 +108,14 @@ void Ser::modify_event(int fd, int state) {
 }
 
 void Ser::do_accept() {
-    int fd = accept(m_listenfd, nullptr, nullptr);
-    if (fd == -1) {
-        cerr << "accept" << endl;
+    //正如accept注释里描述的那样，每有一个新client，server都要有一个的scoket文件与之client进行数据传输
+    int clientFD = accept(serverFD, nullptr, nullptr);
+
+    if (clientFD == -1) {
+        cerr << "accept err" << endl;
         return;
     }
-    cout << "new fd:" << fd << endl;
+    cout << "new fd:" << clientFD << endl;
     /*
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -124,34 +135,37 @@ void Ser::do_accept() {
     cout << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port) << endl;
     //*/
 
-    m_connfd.push_back(fd);//添加到已连接队列
-    add_event(fd, EPOLLIN);//添加到epoll监听
+    clientFD_vector.push_back(clientFD);//添加到已连接队列
+    add_event(clientFD, EPOLLIN);//添加到epoll监听
 
-    struct epoll_event ev;
-    bzero(&ev, sizeof(ev));
+    epoll_event ev{};
     m_epoll_event.push_back(ev);//扩大事件处理队列容量
 
     //do_in(fd);//启动线程处理此请求事件
 }
 
 void Ser::do_in(int fd) {
-    char head[HEADSIZE];
+    char http_head_char[HEADSIZE];
+    //todo 应该使用array，因为自带越界检查，纯array很容易误操作array之外的内存，尤其是char型的，末尾有'\0'
+    std::array<char, HEADSIZE> hear_array{};
+
     //读报文头
-    int headlen;
-    if ((headlen = readline(fd, head, HEADSIZE)) == 0) {
+    unsigned headLen{0};//严格使用CPP风格的初始化方式
+
+    if ((headLen = readline(fd, http_head_char, HEADSIZE)) == 0) {
         do_close(fd);
         return;
     }
-    head[headlen] = 0;
+    http_head_char[headLen] = 0;
     //read返回0则链接断开,处理已链接列表，处理epoll监听队列,减小数组大小
     //解析存储
     char way[16] = {0};
     char uri[1024] = {0};
     char version[16] = {0};
 
-    cout << head;
+    cout << http_head_char;
 
-    sscanf(head, "%s %s %s\r\n", way, uri, version);
+    sscanf(http_head_char, "%s %s %s\r\n", way, uri, version);
     upchar(way, sizeof(way));//统一大小写
     downchar(uri, sizeof(uri));
     upchar(version, sizeof(version));
@@ -221,12 +235,14 @@ void Ser::do_in(int fd) {
 }
 
 void Ser::do_close(int fd) {
+    //重构思路：应该使用的RAII的风格，借助share_ptr，确认的client关闭时，手动将对应的引用计数变为0，触发下面的从两处删除
+
     //close()
     close(fd);
     cout << "close fd:" << fd << endl;
     //从已连接队列中删除
-    m_connfd.remove(fd);
-    //从epoll中删除
+    clientFD_vector.remove(fd);
+    //从epoll监控列表中删除
     delete_event(fd, EPOLLIN);
     //结束当前线程
     //pthread_exit(NULL);
@@ -243,7 +259,7 @@ void Ser::do_conf(const char *filename) {
     }
 
     char line[1024] = {0};
-    while (fgets(line, sizeof(line), pconf) != NULL) {
+    while (fgets(line, sizeof(line), pconf) != nullptr) {
         char key[32] = {0};
         char path[1024] = {0};
         //sscanf(line, "%s=%s\n", key, path);
@@ -276,17 +292,27 @@ void Ser::start() {
 
     cout << "line 271" << endl;
 
-    while (1) {
+    while (true) {
         int num = wait_event();
         for (int i = 0; i < num; ++i) {
-            int fd = m_epoll_event[i].data.fd;
-            int event = m_epoll_event[i].events;
 
-            if ((fd == m_listenfd) && (event & EPOLLIN)) {
+            int polled_fd = m_epoll_event[i].data.fd;
+
+            unsigned eventType = m_epoll_event[i].events;
+
+            //由于只创建了一个epoll对象（也就是只拥有一个epoll fd），所以这唯一的一个poll队列要用于的监听两种活动：
+            //1、新的客户端连接：将新的客户端对应的fd加入到epoll的监控队列
+            //2、客户端连接发来消息：调用相应的线程处理客户端的请求，最终就是想客户端对应的socket文件写入字节流
+
+            //和读取kafka一样，还要自己再过滤一遍？？？？
+            if ((polled_fd == serverFD) && (eventType & EPOLLIN)) {
                 do_accept();
                 //thread(&Ser::do_accept, this).detach();//启动分离的无名线程处理新连接
-            } else if (event & EPOLLIN) {
-                do_in(fd);
+            } else if (eventType & EPOLLIN) {
+
+                //处理并相应client发过来的字节流必然是在这个函数里了
+                do_in(polled_fd);
+
                 //thread(&Ser::do_in, this, fd).detach();//启动线程处理此请求事件
             }
             /*else if (event & EPOLLOUT)
@@ -294,16 +320,19 @@ void Ser::start() {
                 do_out(fd);*/
         }
         //由于连接关闭。当连接数大于100，且容器大于连接数的2倍时，适当减小事件处理容器
-        size_t sizelist = m_connfd.size();
+        size_t sizelist = clientFD_vector.size();
         size_t sizearr = m_epoll_event.size() / 2;
         if ((sizelist > 100) && (sizearr > sizelist))
             m_epoll_event.resize(sizearr);
     }
 }
 
+
 unsigned int Ser::readline(int fd, char *buf, size_t len) {
-    unsigned int i = 0;
+    unsigned int i{0};
     for (i = 0; i < len; ++i) {
+
+        //linux中，文件都是是以文件描述符标记的，读取socket、设备的输入等，就是直接read对应的文件描述符
         if (read(fd, buf + i, 1) != 1) {
             if (errno == EINTR)
                 continue;

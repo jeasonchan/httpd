@@ -11,6 +11,8 @@ class Ser {
 	public:
 		Ser();
 		Ser(const char* ip, unsigned int port);
+
+		//析构啥也不干？？？？这个点类让别人使用时，可能就会造成文件描述符绑定的资源得不到释放，资源泄露
 		~Ser() {}
 	public:
 		void start();
@@ -39,14 +41,17 @@ class Ser {
 		void delete_event(int fd, int state);
 		void modify_event(int fd, int state);
 	private://数据
-		int m_listenfd;//监听套接字
+
+        //server本身的套接字
+		int serverFD;
+
 		struct sockaddr_in m_local_addr;//监听套接字的地址结构
 		int m_epoll_fd;
 		socklen_t m_addr_len;//地址长度
 	
 		char m_confpath[1024];//默认路径配置
 		
-		list<int> m_connfd;//已连接套接字队列
+		list<int> clientFD_vector;//已连接套接字队列
 		vector<struct epoll_event> m_epoll_event;//待处理事件队列
 };
 
