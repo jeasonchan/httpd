@@ -18,4 +18,4 @@ add_executable(httpd
 
 file(COPY .httpd.conf DESTINATION cmake-build-debug)
 
-add_executable(myServer myImpl/Main.cpp myImpl/Util.hpp)
+add_executable(myServer myImpl/Main.cpp myImpl/Util.hpp myImpl/Socket.hpp)
